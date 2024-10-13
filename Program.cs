@@ -22,6 +22,8 @@ namespace xiao_nrf52840_Environment_Host_App{
         private static string BLETemperatureCharacteristic = "54eae144-c9b0-448e-9546-facb32a8bc75";
         // Air Pressure Characteristic.
         private static string BLEAirPressureCharacteristic = "6d5c74ff-9853-4350-8970-456607fddcf8";
+        // Humidity Characteristic.
+        private static string BLEHumidityCharacteristic = "b2ecd36f-6730-45a8-a5fe-351191642c24";
         // Main entry point. 
         static void Main(string[] args)
         {
@@ -34,7 +36,8 @@ namespace xiao_nrf52840_Environment_Host_App{
             // After connecting, find all relevant characteristics (Camera Trigger/Data, Temperature, and Pressure);
             List<IGattCharacteristic1> characteristics = await BluetoothUtilities.GetCharacteristics(new List<string>(){BLECameraCharacteristic, 
             BLETemperatureCharacteristic,
-            BLEAirPressureCharacteristic});
+            BLEAirPressureCharacteristic,
+            BLEHumidityCharacteristic});
             return characteristics;
 
         }
@@ -46,6 +49,7 @@ namespace xiao_nrf52840_Environment_Host_App{
                     IGattCharacteristic1 cameraCharacteristic = null;
                     IGattCharacteristic1 temperatureCharacteristic = null;
                     IGattCharacteristic1 airPressureCharacteristic = null;
+                    IGattCharacteristic1 humidityCharacteristic = null;
                     foreach(IGattCharacteristic1 characteristic in characteristics){
                         string UUID = await characteristic.GetUUIDAsync();
                         if(UUID.ToLower() == BLECameraCharacteristic){
@@ -57,12 +61,16 @@ namespace xiao_nrf52840_Environment_Host_App{
                         if(UUID.ToLower() == BLEAirPressureCharacteristic){
                             airPressureCharacteristic = characteristic;
                         }
+                        if(UUID.ToLower() == BLEHumidityCharacteristic){
+                            humidityCharacteristic = characteristic;
+                        }
                     }
                     // Stay in a loop.
                     while(true){
                         //await TakeCameraImage(cameraCharacteristic);
                         await ReadTemperature(temperatureCharacteristic);
                         await ReadPressure(airPressureCharacteristic);
+                        await ReadHumidity(humidityCharacteristic);
                     }
                     MainAsync().Wait();
                 }catch(Exception e){
@@ -133,6 +141,15 @@ namespace xiao_nrf52840_Environment_Host_App{
             Console.Write("Pressure Reading: ");
             Console.WriteLine(pressure);
             Console.Write(" hPa");
+            // TO DO: Where to place reading?
+        }
+        static async Task ReadHumidity(IGattCharacteristic1 humidityCharacteristic){
+            byte[] characteristicValue;
+            characteristicValue = await humidityCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+            int humidity = characteristicValue[0] << 8 |  characteristicValue[1];
+            Console.Write("Humidity Reading: ");
+            Console.WriteLine(humidity);
+            Console.Write(" <Unit TBD>");
             // TO DO: Where to place reading?
         }
 
