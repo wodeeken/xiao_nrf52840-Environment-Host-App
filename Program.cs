@@ -24,6 +24,7 @@ namespace xiao_nrf52840_Environment_Host_App{
         private static string BLEAirPressureCharacteristic = "6d5c74ff-9853-4350-8970-456607fddcf8";
         // Humidity Characteristic.
         private static string BLEHumidityCharacteristic = "b2ecd36f-6730-45a8-a5fe-351191642c24";
+        private static string BLEHumidityTempCharacteristic = "eec2eb81-ebb1-4352-8420-047304011fdb";
         // Main entry point. 
         static void Main(string[] args)
         {
@@ -37,7 +38,8 @@ namespace xiao_nrf52840_Environment_Host_App{
             List<IGattCharacteristic1> characteristics = await BluetoothUtilities.GetCharacteristics(new List<string>(){BLECameraCharacteristic, 
             BLETemperatureCharacteristic,
             BLEAirPressureCharacteristic,
-            BLEHumidityCharacteristic});
+            BLEHumidityCharacteristic,
+            BLEHumidityTempCharacteristic});
             return characteristics;
 
         }
@@ -50,6 +52,7 @@ namespace xiao_nrf52840_Environment_Host_App{
                     IGattCharacteristic1 temperatureCharacteristic = null;
                     IGattCharacteristic1 airPressureCharacteristic = null;
                     IGattCharacteristic1 humidityCharacteristic = null;
+                    IGattCharacteristic1 humidityTempCharacteristic = null;
                     foreach(IGattCharacteristic1 characteristic in characteristics){
                         string UUID = await characteristic.GetUUIDAsync();
                         if(UUID.ToLower() == BLECameraCharacteristic){
@@ -64,6 +67,9 @@ namespace xiao_nrf52840_Environment_Host_App{
                         if(UUID.ToLower() == BLEHumidityCharacteristic){
                             humidityCharacteristic = characteristic;
                         }
+                        if(UUID.ToLower() == BLEHumidityTempCharacteristic){
+                            humidityTempCharacteristic = characteristic;
+                        }
                     }
                     // Stay in a loop.
                     while(true){
@@ -71,6 +77,7 @@ namespace xiao_nrf52840_Environment_Host_App{
                         await ReadTemperature(temperatureCharacteristic);
                         await ReadPressure(airPressureCharacteristic);
                         await ReadHumidity(humidityCharacteristic);
+                        await ReadHumidityTemp(humidityTempCharacteristic);
                     }
                     MainAsync().Wait();
                 }catch(Exception e){
@@ -131,7 +138,7 @@ namespace xiao_nrf52840_Environment_Host_App{
             int temp = characteristicValue[0] << 8 |  characteristicValue[1];
             Console.Write("Temp Reading: ");
             Console.Write(temp);
-            Console.Write(" °C");
+            Console.WriteLine(" °C");
             // TO DO: Where to place reading?
         }
         static async Task ReadPressure(IGattCharacteristic1 pressureCharacteristic){
@@ -139,8 +146,8 @@ namespace xiao_nrf52840_Environment_Host_App{
             characteristicValue = await pressureCharacteristic.ReadValueAsync(new Dictionary<string, object>());
             int pressure = characteristicValue[0] << 8 |  characteristicValue[1];
             Console.Write("Pressure Reading: ");
-            Console.WriteLine(pressure);
-            Console.Write(" hPa");
+            Console.Write(pressure);
+            Console.WriteLine(" hPa");
             // TO DO: Where to place reading?
         }
         static async Task ReadHumidity(IGattCharacteristic1 humidityCharacteristic){
@@ -148,8 +155,17 @@ namespace xiao_nrf52840_Environment_Host_App{
             characteristicValue = await humidityCharacteristic.ReadValueAsync(new Dictionary<string, object>());
             int humidity = characteristicValue[0] << 8 |  characteristicValue[1];
             Console.Write("Humidity Reading: ");
-            Console.WriteLine(humidity);
-            Console.Write(" <Unit TBD>");
+            Console.Write(humidity);
+            Console.WriteLine(" %RH");
+            // TO DO: Where to place reading?
+        }
+        static async Task ReadHumidityTemp(IGattCharacteristic1 humidityTempCharacteristic){
+            byte[] characteristicValue;
+            characteristicValue = await humidityTempCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+            int humidityTemp = characteristicValue[0] << 8 |  characteristicValue[1];
+            Console.Write("Temp used in Humidity Reading: ");
+            Console.WriteLine(humidityTemp);
+            Console.Write(" °C");
             // TO DO: Where to place reading?
         }
 

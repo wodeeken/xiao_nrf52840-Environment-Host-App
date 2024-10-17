@@ -68,7 +68,12 @@ namespace xiao_nrf52840_Environment_Host_App
                         }
 
                     }
-                    await adapter.StopDiscoveryAsync();
+                    try{
+                        await adapter.StopDiscoveryAsync();
+                    }catch(Exception e){
+
+                    }
+                    
                 }
                 catch (Exception e)
                 {
@@ -83,10 +88,11 @@ namespace xiao_nrf52840_Environment_Host_App
             // Get object manager
             var objectManager = Connection.System.CreateProxy<IObjectManager>("org.bluez", "/");
             var objects = await objectManager.GetManagedObjectsAsync();
-            // Find all service candidates.
+            // Find all characteristic candidates.
             foreach(var obj in objects){
               foreach(var val in obj.Value){
                 if(val.Key.Contains("org.bluez.GattCharacteristic1")){
+                    Console.WriteLine(val.Value["UUID"]);
                     // Is the UUID value contained in our list of UUIDs?
                     if(charUUIDs.Contains(val.Value["UUID"])){
                         // create char.
