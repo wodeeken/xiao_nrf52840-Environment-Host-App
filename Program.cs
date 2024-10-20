@@ -9,15 +9,20 @@ namespace xiao_nrf52840_Environment_Host_App{
     
     class Program{
         // The Alias of the device to connect to.
-        private static string DeviceToConnect = "ArduC";
+        private static string DeviceToConnect = "XIAO_";
         // If the device is already connected, it has a different name.
-        private static string DeviceToConnect_ConnectedName = "ArduCAM";
+        private static string DeviceToConnect_ConnectedName = "XIAO_MONITOR";
         // Camera Trigger/Data characteristic.
         private static string BLECameraCharacteristic = "9a82b386-3169-475a-935a-2394cd7a4d1d";
+        // Audio Trigger/Data characteristic.
+        private static string BLEAudioCharacteristic = "e9a68cde-2ac4-4cf4-b920-bf03786aee62";
+        private static string BLEAudioSampleRateCharacteristic = "0e70dcba-ced1-47bb-a269-af30eb979f12";
         // Write this value to BLECameraCharacteristic to trigger camera.
         private static byte[] BLECameraCharacteristicValue_Trigger = new byte[]{0xFF,0xFF,0xFF,0xFF,0xFF,0x74,0x00,0x00};
-        // Write this value to BLECameraCharacteristic to fetch packet whose number is replaced by 0xA1 and 0xA2 by the high and low byte respectively.
-        private static byte[] BLECameraCharacteristicValue_PacketFetch = new byte[9]{0xFF,0xEF,0xDF,0xCF,0xBF,0xA1,0xA2,0x00,0x00};
+        // Write this value to BLEAudioCharacteristic to trigger microphone.
+        private static byte[] BLEAudioCharacteristicValue_Trigger = new byte[]{0xFF,0xFF,0xFF,0xFF,0xFF,0x75,0x00,0x00};
+        // Write this value to BLECameraCharacteristic/BLEAudioCharacteristic to fetch packet whose number is replaced by 0xA1 and 0xA2 by the high and low byte respectively.
+        private static byte[] BLECamera_AudioCameraCharacteristicValue_PacketFetch = new byte[9]{0xFF,0xEF,0xDF,0xCF,0xBF,0xA1,0xA2,0x00,0x00};
         // Temperature Characteristic.
         private static string BLETemperatureCharacteristic = "54eae144-c9b0-448e-9546-facb32a8bc75";
         // Air Pressure Characteristic.
@@ -36,6 +41,9 @@ namespace xiao_nrf52840_Environment_Host_App{
             IDevice1 myDevice = await BluetoothUtilities.ScanAndConnect(DeviceToConnect, DeviceToConnect_ConnectedName);
             // After connecting, find all relevant characteristics (Camera Trigger/Data, Temperature, and Pressure);
             List<IGattCharacteristic1> characteristics = await BluetoothUtilities.GetCharacteristics(new List<string>(){BLECameraCharacteristic, 
+            BLEAudioCharacteristic,
+            BLEAudioSampleRateCharacteristic,
+            BLEAudioSampleRateCharacteristic,
             BLETemperatureCharacteristic,
             BLEAirPressureCharacteristic,
             BLEHumidityCharacteristic,
@@ -48,6 +56,8 @@ namespace xiao_nrf52840_Environment_Host_App{
                 try{
                     List<IGattCharacteristic1> characteristics = await ConnectToEnvironmentalMonitor();
                     // Get camera characteristic.
+                    IGattCharacteristic1 audioCharacteristic = null;
+                    IGattCharacteristic1 audioSampleRateCharacteristic = null;
                     IGattCharacteristic1 cameraCharacteristic = null;
                     IGattCharacteristic1 temperatureCharacteristic = null;
                     IGattCharacteristic1 airPressureCharacteristic = null;
@@ -58,28 +68,33 @@ namespace xiao_nrf52840_Environment_Host_App{
                         if(UUID.ToLower() == BLECameraCharacteristic){
                             cameraCharacteristic = characteristic;
                         }
-                        if(UUID.ToLower() == BLETemperatureCharacteristic){
+                        else if(UUID.ToLower() == BLETemperatureCharacteristic){
                             temperatureCharacteristic = characteristic;
                         }
-                        if(UUID.ToLower() == BLEAirPressureCharacteristic){
+                        else if(UUID.ToLower() == BLEAirPressureCharacteristic){
                             airPressureCharacteristic = characteristic;
                         }
-                        if(UUID.ToLower() == BLEHumidityCharacteristic){
+                        else if(UUID.ToLower() == BLEHumidityCharacteristic){
                             humidityCharacteristic = characteristic;
                         }
-                        if(UUID.ToLower() == BLEHumidityTempCharacteristic){
+                        else if(UUID.ToLower() == BLEHumidityTempCharacteristic){
                             humidityTempCharacteristic = characteristic;
+                        }
+                        else if(UUID.ToLower() == BLEAudioCharacteristic){
+                            audioCharacteristic = characteristic;
+                        }else if(UUID.ToLower() == BLEAudioSampleRateCharacteristic){
+                            audioSampleRateCharacteristic = characteristic;
                         }
                     }
                     // Stay in a loop.
                     while(true){
-                        //await TakeCameraImage(cameraCharacteristic);
+                        await TakeCameraImage(cameraCharacteristic);
                         await ReadTemperature(temperatureCharacteristic);
                         await ReadPressure(airPressureCharacteristic);
                         await ReadHumidity(humidityCharacteristic);
                         await ReadHumidityTemp(humidityTempCharacteristic);
+                        await RecordMicrophoneAudio(audioCharacteristic, audioSampleRateCharacteristic);
                     }
-                    MainAsync().Wait();
                 }catch(Exception e){
 
                 }
@@ -112,13 +127,45 @@ namespace xiao_nrf52840_Environment_Host_App{
                     currentValIndex++;
                 }
            }
-           File.WriteAllBytes("/my/folder/Desktop/pics/" + DateTime.Now.ToString("yyyy_MM_dd hh:mm:ss") + ".jpg", CameraData);
+           File.WriteAllBytes("/home/will/Documents/ArduCAMImages/" + DateTime.Now.ToString("yyyy_MM_dd hh:mm:ss") + ".jpg", CameraData);
         }
-
+        static async Task RecordMicrophoneAudio(IGattCharacteristic1 audioCharacteristic, IGattCharacteristic1 audioSampleRateCharacteristic){
+            
+           await audioCharacteristic.WriteValueAsync(BLEAudioCharacteristicValue_Trigger,new Dictionary<string, object>() );
+            
+           
+           Console.WriteLine("Triggering Microphone!");
+           // Wait 20 seconds for audio recording to finish.
+           System.Threading.Thread.Sleep(20000);
+           byte[] characteristicValue;
+           characteristicValue = await audioCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+           int totalPackets = characteristicValue[0] << 8 |  characteristicValue[1]; 
+           byte[] AudioData = new byte[totalPackets * 244];
+           for(int currentPacket = 0; currentPacket < totalPackets; currentPacket++){
+                Console.Write(currentPacket); Console.WriteLine($" of {totalPackets}");
+                await audioCharacteristic.WriteValueAsync(GetPacketFetchMessage(currentPacket),new Dictionary<string, object>() );
+                characteristicValue = await audioCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+                // Stay in loop until we read a valid value.
+                while(characteristicValue.Count() <= 1){
+                    System.Threading.Thread.Sleep(10);
+                    characteristicValue = await audioCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+                }
+                // Get the data, save to data array.
+                int currentValIndex = 0;
+                for(int i = currentPacket * 244; i < (currentPacket * 244) + characteristicValue.Count(); i++){
+                    AudioData[i] = characteristicValue[currentValIndex];
+                    currentValIndex++;
+                }
+           }
+           File.WriteAllBytes("/home/will/Documents/ArduCAMImages/" + DateTime.Now.ToString("yyyy_MM_dd hh:mm:ss") + ".audio", AudioData);
+           // Wait one second before reading the sample rate characteristic/
+           System.Threading.Thread.Sleep(1000);
+           int sampleRate = await ReadAudioSampleRate(audioSampleRateCharacteristic);
+        }
         // Find 0xA1 and 0xA2 and replace with high and low byte of packetToFetch integer.
         static byte[] GetPacketFetchMessage(int packetToFetch){
-            byte[] returnMessage = new byte[BLECameraCharacteristicValue_PacketFetch.Length];
-            BLECameraCharacteristicValue_PacketFetch.CopyTo(returnMessage, 0);
+            byte[] returnMessage = new byte[BLECamera_AudioCameraCharacteristicValue_PacketFetch.Length];
+            BLECamera_AudioCameraCharacteristicValue_PacketFetch.CopyTo(returnMessage, 0);
             ushort curPacket_short = Convert.ToUInt16(packetToFetch);
             for(int i = 0; i < returnMessage.Length; i++){
                 if(returnMessage[i].CompareTo(0xA1) == 0){
@@ -167,6 +214,15 @@ namespace xiao_nrf52840_Environment_Host_App{
             Console.WriteLine(humidityTemp);
             Console.Write(" °C");
             // TO DO: Where to place reading?
+        }
+        static async Task<int> ReadAudioSampleRate(IGattCharacteristic1 audioSampleRateCharacteristic){
+            byte[] characteristicValue;
+            characteristicValue = await audioSampleRateCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+            int audioSampleRate = characteristicValue[0] << 8 |  characteristicValue[1];
+            Console.Write("Audio Sample Rate: ");
+            Console.WriteLine(audioSampleRate);
+            Console.Write(" Hz");
+            return audioSampleRate;
         }
 
 
