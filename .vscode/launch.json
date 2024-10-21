@@ -3,5 +3,19 @@
     // Hover to view descriptions of existing attributes.
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
-    "configurations": []
+    "configurations": [
+        {
+            "name": "debugging",
+            "type": "coreclr",
+            "request": "launch",
+            "program": "${workspaceFolder}/bin/Debug/net8.0/xiao_nrf52840-Environment-Host-App",
+            "args": ["/home/will/Desktop/Xiao_EnvironmentalMonitor_Data/CameraData", 
+                     "/home/will/Desktop/Xiao_EnvironmentalMonitor_Data/AudioData",
+                     "/home/will/Desktop/Xiao_EnvironmentalMonitor_Data/AirTemperatureData",
+                     "/home/will/Desktop/Xiao_EnvironmentalMonitor_Data/AirPressureData",
+                     "/home/will/Desktop/Xiao_EnvironmentalMonitor_Data/RelativeHumidityData",
+                     "/home/will/Desktop/Xiao_EnvironmentalMonitor_Data/EnclosureTemperatureData",
+                     "1"]
+        }
+    ]
 }
