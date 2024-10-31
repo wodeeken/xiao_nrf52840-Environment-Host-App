@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Serialization;
+using System.Data;
 namespace xiao_nrf52840_Environment_Host_App
 {
 
@@ -14,27 +15,38 @@ namespace xiao_nrf52840_Environment_Host_App
         static void Main(string[] args)
         {
             double maxFileSize;
-            if (args.Count() < 7)
+            int retainmentPeriodDays;
+            int dataReadIntervalMinutes;
+            if (args.Count() < 9)
             {
-                throw new ArgumentException("No arguments passed. Expecting 7 in the following order: " +
-                "{Image data directory, audio data directory, air temp directory, air pressure directory, air humidity directory, enclosure temp directory, max air monitor data file size in Kb (triggers archiving)}.");
+                throw new ArgumentException("No arguments passed. Expecting 9 in the following order: " +
+                "{Image data directory, audio data directory, air temp directory, air pressure directory, air humidity directory, enclosure temp directory, " + 
+                "max air monitor data file size in Kb (triggers archiving), data retainment in days (valid for archived air monitor data and image/audio files), data read interval (in minutes) }.");
             }
             else
             {
-                for (int i = 0; i < args.Count() - 1; i++)
+                for (int i = 0; i < args.Count() - 3; i++)
                 {
                     if (!Directory.Exists(args[i]))
                     {
                         throw new ArgumentException($"Arg path at index {i} ({args[i]}) does not point to a valid directory.");
                     }
                 }
-                if (!double.TryParse(args[args.Count() - 1], out maxFileSize) || maxFileSize < 1)
+                if (!double.TryParse(args[args.Count() - 3], out maxFileSize) || maxFileSize < 1)
                 {
-                    throw new ArgumentException($"Arg Max file size at index {args.Count() - 1} ({args[args.Count() - 1]}) is not in proper format (cannot be less than 1 kb )");
+                    throw new ArgumentException($"Arg Max file size at index {args.Count() - 3} ({args[args.Count() - 3]}) is not in proper format (cannot be less than 1 kb )");
+                }
+                if (!int.TryParse(args[args.Count() - 2], out retainmentPeriodDays) || retainmentPeriodDays < 1)
+                {
+                    throw new ArgumentException($"Arg data retainment in days at index {args.Count() - 2} ({args[args.Count() - 2]}) is not in proper format (must be an integer >= 1 days)");
+                }
+                if (!int.TryParse(args[args.Count() - 1], out dataReadIntervalMinutes) || dataReadIntervalMinutes < 1)
+                {
+                    throw new ArgumentException($"Arg data fetch interval in minutes at index {args.Count() - 1} ({args[args.Count() - 1]}) is not in proper format (must be an integer >= 1 minutes)");
                 }
             }
             // All main code is in MainAsync.
-            MainAsync(args[0], args[1], args[2], args[3], args[4], args[5], maxFileSize).Wait();
+            MainAsync(args[0], args[1], args[2], args[3], args[4], args[5], maxFileSize, retainmentPeriodDays, dataReadIntervalMinutes).Wait();
         }
 
         static async Task<List<IGattCharacteristic1>> ConnectToEnvironmentalMonitor()
@@ -52,7 +64,8 @@ namespace xiao_nrf52840_Environment_Host_App
             return characteristics;
 
         }
-        static async Task MainAsync(string cameraDataPath, string audioDataPath, string airTempDataPath, string airPressureDataPath, string airHumidityDataPath, string enclosureAirTempDataPath, double maxFileSize)
+        static async Task MainAsync(string cameraDataPath, string audioDataPath, string airTempDataPath, string airPressureDataPath, 
+                    string airHumidityDataPath, string enclosureAirTempDataPath, double maxFileSize, int retainmentPeriodDays, int dataIntervalMinutes)
         {
             while (true)
             {
@@ -99,16 +112,26 @@ namespace xiao_nrf52840_Environment_Host_App
                             audioSampleRateCharacteristic = characteristic;
                         }
                     }
+                    DateTime lastDataReadTime_Begin;
                     // Stay in a loop.
                     while (true)
                     {
-                        RotateDataFiles(airTempDataPath, airPressureDataPath, airHumidityDataPath, enclosureAirTempDataPath, maxFileSize);
-                        //await TakeCameraImage(cameraCharacteristic, cameraDataPath);
+                        lastDataReadTime_Begin = DateTime.UtcNow;
+                        // Archive/Delete old data according to file size (air monitor data) and retainment period (air monitor archives and audio/camera data).
+                        RotateDataFiles(airTempDataPath, airPressureDataPath, airHumidityDataPath, enclosureAirTempDataPath, cameraDataPath, audioDataPath, maxFileSize, retainmentPeriodDays);
+                        await TakeCameraImage(cameraCharacteristic, cameraDataPath);
                         await ReadEnclosureTemperature(enclosureTemperatureCharacteristic, enclosureAirTempDataPath);
                         await ReadPressure(airPressureCharacteristic, airPressureDataPath);
                         await ReadHumidity(humidityCharacteristic, airHumidityDataPath);
                         await ReadTemperature(temperatureCharacteristic, airTempDataPath);
-                        //await RecordMicrophoneAudio(audioCharacteristic, audioSampleRateCharacteristic, audioDataPath);
+                        await RecordMicrophoneAudio(audioCharacteristic, audioSampleRateCharacteristic, audioDataPath);
+
+                        // Calculate next read time. If we've already exceeded the interval time, don't delay.
+                        if(lastDataReadTime_Begin.AddMinutes(dataIntervalMinutes) > DateTime.UtcNow){
+                            int waitPeriod = (lastDataReadTime_Begin.AddMinutes(dataIntervalMinutes) - DateTime.UtcNow).Milliseconds;
+                            Console.WriteLine($"Now sleeping for {waitPeriod} milliseconds until time for next read.");
+                            System.Threading.Thread.Sleep(waitPeriod);
+                        }
                     }
                 }
                 catch (Exception e)
@@ -125,15 +148,55 @@ namespace xiao_nrf52840_Environment_Host_App
             Console.WriteLine("Triggering Camera!");
             // Wait a few seconds for camera to work.
             System.Threading.Thread.Sleep(5000);
-            byte[] characteristicValue;
-            characteristicValue = await cameraCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+            byte[] characteristicValue = [];
+            bool shouldWait = true;
+            int maxLoopWait = 500;
+            int curLoopWait = 0;
+            while(shouldWait && curLoopWait < maxLoopWait){
+                characteristicValue = await cameraCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+                // Wait until characteristic != trigger.
+                if(characteristicValue.Count() < 8 || (characteristicValue[0] ==  Constants.BLECameraCharacteristicValue_Trigger[0] 
+                && characteristicValue[1] == Constants.BLECameraCharacteristicValue_Trigger[1] 
+                && characteristicValue[2] == Constants.BLECameraCharacteristicValue_Trigger[2] 
+                && characteristicValue[3] == Constants.BLECameraCharacteristicValue_Trigger[3]
+                && characteristicValue[4] == Constants.BLECameraCharacteristicValue_Trigger[4]
+                && characteristicValue[5] == Constants.BLECameraCharacteristicValue_Trigger[5]
+                && characteristicValue[6] == Constants.BLECameraCharacteristicValue_Trigger[6]
+                && characteristicValue[7] == Constants.BLECameraCharacteristicValue_Trigger[7]))
+                {
+                    Console.WriteLine($"Waiting for camera capture to complete: {curLoopWait} of {maxLoopWait}");
+                    System.Threading.Thread.Sleep(2000);
+                    
+                }else{
+                    shouldWait = false;
+                }
+                curLoopWait++;
+
+            }
+            if(curLoopWait >= maxLoopWait){
+                Console.Write("Audio wait timeout. Skipping data transmission.");
+                return;
+            }
             int totalPackets = characteristicValue[0] << 8 | characteristicValue[1];
             byte[] CameraData = new byte[totalPackets * 244];
             for (int currentPacket = 0; currentPacket < totalPackets; currentPacket++)
             {
                 Console.Write(currentPacket); Console.WriteLine($" of {totalPackets}");
-                await cameraCharacteristic.WriteValueAsync(GetPacketFetchMessage(currentPacket), new Dictionary<string, object>());
-                characteristicValue = await cameraCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+                try{
+                    await cameraCharacteristic.WriteValueAsync(GetPacketFetchMessage(currentPacket), new Dictionary<string, object>());
+                
+                    characteristicValue = await cameraCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+                }catch(Exception e){
+                    if(e.Message == "org.bluez.Error.Failed: Operation failed with ATT error: 0x0e"){
+                        currentPacket--;
+                        System.Threading.Thread.Sleep(1000);
+                        continue;
+                    }else{
+                        throw e;
+                    }
+            
+                }
+                
                 // Stay in loop until we read a valid value.
                 while (characteristicValue.Count() <= 1)
                 {
@@ -159,15 +222,52 @@ namespace xiao_nrf52840_Environment_Host_App
             Console.WriteLine("Triggering Microphone!");
             // Wait 20 seconds for audio recording to finish.
             System.Threading.Thread.Sleep(20000);
-            byte[] characteristicValue;
-            characteristicValue = await audioCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+            byte[] characteristicValue = [];
+            bool shouldWait = true;
+            int maxLoopWait = 500;
+            int curLoopWait = 0;
+            while(shouldWait && curLoopWait < maxLoopWait){
+                characteristicValue = await audioCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+                // Wait until characteristic != trigger.
+                if(characteristicValue.Count() < 8 || (characteristicValue[0] ==  Constants.BLEAudioCharacteristicValue_Trigger[0] 
+                && characteristicValue[1] == Constants.BLEAudioCharacteristicValue_Trigger[1] 
+                && characteristicValue[2] == Constants.BLEAudioCharacteristicValue_Trigger[2] 
+                && characteristicValue[3] == Constants.BLEAudioCharacteristicValue_Trigger[3]
+                && characteristicValue[4] == Constants.BLEAudioCharacteristicValue_Trigger[4]
+                && characteristicValue[5] == Constants.BLEAudioCharacteristicValue_Trigger[5]
+                && characteristicValue[6] == Constants.BLEAudioCharacteristicValue_Trigger[6]
+                && characteristicValue[7] == Constants.BLEAudioCharacteristicValue_Trigger[7]))
+                {
+                    Console.WriteLine($"Waiting for audio capture to complete: {curLoopWait} of {maxLoopWait}");
+                    System.Threading.Thread.Sleep(2000);
+                }else{
+                    shouldWait = false;
+                }
+                curLoopWait++;
+
+            }
+            if(curLoopWait >= maxLoopWait){
+                Console.Write("Audio wait timeout. Skipping data transmission.");
+                return;
+            }
             int totalPackets = characteristicValue[0] << 8 | characteristicValue[1];
             byte[] AudioData = new byte[totalPackets * 244];
             for (int currentPacket = 0; currentPacket < totalPackets; currentPacket++)
             {
                 Console.Write(currentPacket); Console.WriteLine($" of {totalPackets}");
-                await audioCharacteristic.WriteValueAsync(GetPacketFetchMessage(currentPacket), new Dictionary<string, object>());
-                characteristicValue = await audioCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+                try{
+                    await audioCharacteristic.WriteValueAsync(GetPacketFetchMessage(currentPacket), new Dictionary<string, object>());
+                    characteristicValue = await audioCharacteristic.ReadValueAsync(new Dictionary<string, object>());
+                }catch(Exception e){
+                    if(e.Message == "org.bluez.Error.Failed: Operation failed with ATT error: 0x0e"){
+                        currentPacket--;
+                        System.Threading.Thread.Sleep(1000);
+                        continue;
+                    }else{
+                        throw e;
+                    }
+                }
+                
                 // Stay in loop until we read a valid value.
                 while (characteristicValue.Count() <= 1)
                 {
@@ -222,7 +322,7 @@ namespace xiao_nrf52840_Environment_Host_App
             characteristicValue = await tempCharacteristic.ReadValueAsync(new Dictionary<string, object>());
             // Temp is rounded to nearest integer.
             int temp = characteristicValue[0] << 8 | characteristicValue[1];
-            Console.Write("Temp Reading: ");
+            Console.Write("Enclosure Temperature Reading: ");
             Console.Write(temp);
             Console.WriteLine(" °C");
             string dataString = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss zzz") + " - " + temp.ToString() + "°C" + Environment.NewLine;
@@ -255,7 +355,7 @@ namespace xiao_nrf52840_Environment_Host_App
             byte[] characteristicValue;
             characteristicValue = await tempCharacteristic.ReadValueAsync(new Dictionary<string, object>());
             int temp = characteristicValue[0] << 8 | characteristicValue[1];
-            Console.Write("Temp: ");
+            Console.Write("Temperature Reading: ");
             Console.WriteLine(temp);
             Console.Write(" °C");
             string dataString = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss zzz") + " - " + temp.ToString() + "°C" + Environment.NewLine;
@@ -272,30 +372,52 @@ namespace xiao_nrf52840_Environment_Host_App
             return audioSampleRate;
         }
         // For each file path, if file is greater than the max file size, compress.
-        static void RotateDataFiles(string airTempDataPath, string airPressureDataPath, string airHumidityDataPath, string enclosureAirTempDataPath, double maxFileSize)
+        static void RotateDataFiles(string airTempDataPath, string airPressureDataPath, string airHumidityDataPath, string enclosureAirTempDataPath, 
+                string cameraDataPath, string audioDataPath, double maxFileSize, int retainmentPeriodDays)
         {
-
+            // Delete old audio.
+            DeleteOldDataFiles(audioDataPath, retainmentPeriodDays);
+            // Delete old images.
+            DeleteOldDataFiles(cameraDataPath, retainmentPeriodDays);
             if (File.Exists(Path.Combine(airTempDataPath, Constants.OutsideAirTemperatureDataFileName)) && new FileInfo(Path.Combine(airTempDataPath, Constants.OutsideAirTemperatureDataFileName)).Length > maxFileSize * 1000)
             {
-                CompressionHelper(Path.Combine(airTempDataPath, Constants.OutsideAirTemperatureDataFileName), 20);
+                CompressionHelper(Path.Combine(airTempDataPath, Constants.OutsideAirTemperatureDataFileName), retainmentPeriodDays);
             }
 
             if (File.Exists(Path.Combine(airPressureDataPath, Constants.AirPressureDataFileName)) && new FileInfo(Path.Combine(airPressureDataPath, Constants.AirPressureDataFileName)).Length > maxFileSize * 1000)
             {
-                CompressionHelper(Path.Combine(airPressureDataPath, Constants.AirPressureDataFileName), 20);
+                CompressionHelper(Path.Combine(airPressureDataPath, Constants.AirPressureDataFileName), retainmentPeriodDays);
             }
 
             if (File.Exists(Path.Combine(airHumidityDataPath, Constants.HumidityDataFileName)) && new FileInfo(Path.Combine(airHumidityDataPath, Constants.HumidityDataFileName)).Length > maxFileSize * 1000)
             {
-                CompressionHelper(Path.Combine(airHumidityDataPath, Constants.HumidityDataFileName), 20);
+                CompressionHelper(Path.Combine(airHumidityDataPath, Constants.HumidityDataFileName), retainmentPeriodDays);
             }
 
             if (File.Exists(Path.Combine(enclosureAirTempDataPath, Constants.EnclosureAirTemperatureDataFileName)) && new FileInfo(Path.Combine(enclosureAirTempDataPath, Constants.EnclosureAirTemperatureDataFileName)).Length > maxFileSize * 1000)
             {
-                CompressionHelper(Path.Combine(enclosureAirTempDataPath, Constants.EnclosureAirTemperatureDataFileName), 20);
+                CompressionHelper(Path.Combine(enclosureAirTempDataPath, Constants.EnclosureAirTemperatureDataFileName), retainmentPeriodDays);
             }
 
 
+        }
+        // Helper for deleting old files whose name matches the format "yyyy_MM_dd hh:mm:ss.<ext>"
+        static void DeleteOldDataFiles(string filePath, int maxRetainmentPeriodDays){
+            // Find all compressed files older than 20 days.
+            string directory = Path.GetDirectoryName(filePath);
+            string[] allFiles = Directory.GetFiles(directory);
+            foreach(string fullFile in allFiles){
+                string fileName = new FileInfo(fullFile).Name;
+                if(fileName.Split(".").Count() > 0){
+                    if(DateTime.TryParse(fileName.Split(".")[0],out DateTime compressionTime))
+                    {
+                        if(compressionTime < DateTime.Now.AddDays(-maxRetainmentPeriodDays)){
+                            // Delete the file.
+                            File.Delete(fullFile);
+                        }
+                    }
+                }
+            }
         }
 
         static void CompressionHelper(string filePath, int maxRetainmentPeriodDays)
