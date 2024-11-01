@@ -119,18 +119,18 @@ namespace xiao_nrf52840_Environment_Host_App
                         lastDataReadTime_Begin = DateTime.UtcNow;
                         // Archive/Delete old data according to file size (air monitor data) and retainment period (air monitor archives and audio/camera data).
                         RotateDataFiles(airTempDataPath, airPressureDataPath, airHumidityDataPath, enclosureAirTempDataPath, cameraDataPath, audioDataPath, maxFileSize, retainmentPeriodDays);
-                        await TakeCameraImage(cameraCharacteristic, cameraDataPath);
                         await ReadEnclosureTemperature(enclosureTemperatureCharacteristic, enclosureAirTempDataPath);
                         await ReadPressure(airPressureCharacteristic, airPressureDataPath);
                         await ReadHumidity(humidityCharacteristic, airHumidityDataPath);
                         await ReadTemperature(temperatureCharacteristic, airTempDataPath);
+                        await TakeCameraImage(cameraCharacteristic, cameraDataPath);
                         await RecordMicrophoneAudio(audioCharacteristic, audioSampleRateCharacteristic, audioDataPath);
 
                         // Calculate next read time. If we've already exceeded the interval time, don't delay.
                         if(lastDataReadTime_Begin.AddMinutes(dataIntervalMinutes) > DateTime.UtcNow){
-                            int waitPeriod = (lastDataReadTime_Begin.AddMinutes(dataIntervalMinutes) - DateTime.UtcNow).Milliseconds;
-                            Console.WriteLine($"Now sleeping for {waitPeriod} milliseconds until time for next read.");
-                            System.Threading.Thread.Sleep(waitPeriod);
+                            double waitPeriod = (lastDataReadTime_Begin.AddMinutes(dataIntervalMinutes) - DateTime.UtcNow).TotalMilliseconds;
+                            Console.WriteLine($"Now sleeping for {(int) waitPeriod} milliseconds until time for next read.");
+                            System.Threading.Thread.Sleep((int) waitPeriod);
                         }
                     }
                 }
