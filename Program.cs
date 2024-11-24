@@ -150,7 +150,7 @@ namespace xiao_nrf52840_Environment_Host_App
             System.Threading.Thread.Sleep(5000);
             byte[] characteristicValue = [];
             bool shouldWait = true;
-            int maxLoopWait = 500;
+            int maxLoopWait = 1000;
             int curLoopWait = 0;
             while(shouldWait && curLoopWait < maxLoopWait){
                 characteristicValue = await cameraCharacteristic.ReadValueAsync(new Dictionary<string, object>());
@@ -224,7 +224,7 @@ namespace xiao_nrf52840_Environment_Host_App
             System.Threading.Thread.Sleep(20000);
             byte[] characteristicValue = [];
             bool shouldWait = true;
-            int maxLoopWait = 500;
+            int maxLoopWait = 1000;
             int curLoopWait = 0;
             while(shouldWait && curLoopWait < maxLoopWait){
                 characteristicValue = await audioCharacteristic.ReadValueAsync(new Dictionary<string, object>());
@@ -325,7 +325,7 @@ namespace xiao_nrf52840_Environment_Host_App
             Console.Write("Enclosure Temperature Reading: ");
             Console.Write(temp);
             Console.WriteLine(" °C");
-            string dataString = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss zzz") + " - " + temp.ToString() + "°C" + Environment.NewLine;
+            string dataString = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss zzz") + " = " + temp.ToString() + "°C" + Environment.NewLine;
             File.AppendAllText(Path.Combine(enclosureTempDataPath, Constants.EnclosureAirTemperatureDataFileName), dataString);
         }
         static async Task ReadPressure(IGattCharacteristic1 pressureCharacteristic, string pressureDataPath)
@@ -336,7 +336,7 @@ namespace xiao_nrf52840_Environment_Host_App
             Console.Write("Pressure Reading: ");
             Console.Write(pressure);
             Console.WriteLine(" hPa");
-            string dataString = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss zzz") + " - " + pressure.ToString() + " hPa" + Environment.NewLine;
+            string dataString = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss zzz") + " = " + pressure.ToString() + " hPa" + Environment.NewLine;
             File.AppendAllText(Path.Combine(pressureDataPath, Constants.AirPressureDataFileName), dataString);
         }
         static async Task ReadHumidity(IGattCharacteristic1 humidityCharacteristic, string humidityDataPath)
@@ -347,7 +347,7 @@ namespace xiao_nrf52840_Environment_Host_App
             Console.Write("Humidity Reading: ");
             Console.Write(humidity);
             Console.WriteLine("%");
-            string dataString = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss zzz") + " - " + humidity.ToString() + "%" + Environment.NewLine;
+            string dataString = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss zzz") + " = " + humidity.ToString() + "%" + Environment.NewLine;
             File.AppendAllText(Path.Combine(humidityDataPath, Constants.HumidityDataFileName), dataString);
         }
         static async Task ReadTemperature(IGattCharacteristic1 tempCharacteristic, string temperatureDataPath)
@@ -358,7 +358,7 @@ namespace xiao_nrf52840_Environment_Host_App
             Console.Write("Temperature Reading: ");
             Console.WriteLine(temp);
             Console.Write(" °C");
-            string dataString = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss zzz") + " - " + temp.ToString() + "°C" + Environment.NewLine;
+            string dataString = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss zzz") + " = " + temp.ToString() + "°C" + Environment.NewLine;
             File.AppendAllText(Path.Combine(temperatureDataPath, Constants.OutsideAirTemperatureDataFileName), dataString);
         }
         static async Task<int> ReadAudioSampleRate(IGattCharacteristic1 audioSampleRateCharacteristic)
