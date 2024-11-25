@@ -33,10 +33,16 @@ namespace xiao_nrf52840_Environment_Host_App{
 
         // Air Monitor File Names
         // - Names of the air monitor data files.
+        public const string EnclosureDataFolderName = "EnclosureTemperatureData";
         public const string EnclosureAirTemperatureDataFileName = "EnclosureTemp.data";
+        public const string OutsideAirTemperatureDataFolderName = "AirTemperatureData";
         public const string OutsideAirTemperatureDataFileName = "Temperature.data";
+        public const string AirPressureDataFolderName = "AirPressureData";
         public const string AirPressureDataFileName = "Pressure.data";
+        public const string RelativeHumidityFolderName = "RelativeHumidityData";
         public const string HumidityDataFileName = "Humidity.data";
+        public const string CameraDataFolderName = "CameraData";
+        public const string AudioDataFolderName = "AudioData";
     }
     
     }

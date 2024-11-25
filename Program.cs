@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.Serialization;
 using System.Data;
+using System.Globalization;
 namespace xiao_nrf52840_Environment_Host_App
 {
 
@@ -17,20 +18,18 @@ namespace xiao_nrf52840_Environment_Host_App
             double maxFileSize;
             int retainmentPeriodDays;
             int dataReadIntervalMinutes;
-            if (args.Count() < 9)
+            if (args.Count() < 4)
             {
-                throw new ArgumentException("No arguments passed. Expecting 9 in the following order: " +
-                "{Image data directory, audio data directory, air temp directory, air pressure directory, air humidity directory, enclosure temp directory, " + 
+                throw new ArgumentException("No arguments passed. Expecting 4 in the following order: " +
+                "{Data directory, " + 
                 "max air monitor data file size in Kb (triggers archiving), data retainment in days (valid for archived air monitor data and image/audio files), data read interval (in minutes) }.");
             }
             else
             {
-                for (int i = 0; i < args.Count() - 3; i++)
+                
+                if (!Directory.Exists(args[0]))
                 {
-                    if (!Directory.Exists(args[i]))
-                    {
-                        throw new ArgumentException($"Arg path at index {i} ({args[i]}) does not point to a valid directory.");
-                    }
+                    throw new ArgumentException($"Arg path at index {0} ({args[0]}) does not point to a valid directory.");
                 }
                 if (!double.TryParse(args[args.Count() - 3], out maxFileSize) || maxFileSize < 1)
                 {
@@ -46,7 +45,11 @@ namespace xiao_nrf52840_Environment_Host_App
                 }
             }
             // All main code is in MainAsync.
-            MainAsync(args[0], args[1], args[2], args[3], args[4], args[5], maxFileSize, retainmentPeriodDays, dataReadIntervalMinutes).Wait();
+            MainAsync(Path.Combine(args[0], Constants.CameraDataFolderName), Path.Combine(args[0], Constants.AudioDataFolderName),
+             Path.Combine(args[0], Constants.OutsideAirTemperatureDataFolderName), 
+             Path.Combine(args[0], Constants.AirPressureDataFolderName), 
+             Path.Combine(args[0], Constants.RelativeHumidityFolderName), 
+             Path.Combine(args[0], Constants.EnclosureDataFolderName), maxFileSize, retainmentPeriodDays, dataReadIntervalMinutes).Wait();
         }
 
         static async Task<List<IGattCharacteristic1>> ConnectToEnvironmentalMonitor()
@@ -405,13 +408,14 @@ namespace xiao_nrf52840_Environment_Host_App
         }
         // Helper for deleting old files whose name matches the format "yyyy_MM_dd hh:mm:ss.<ext>"
         static void DeleteOldDataFiles(string filePath, int maxRetainmentPeriodDays){
-            // Find all compressed files older than 20 days.
-            string directory = Path.GetDirectoryName(filePath);
-            string[] allFiles = Directory.GetFiles(directory);
+            // Find all compressed files older than maxRetainmentPeriod days.
+            string[] allFiles = Directory.GetFiles(filePath);
             foreach(string fullFile in allFiles){
                 string fileName = new FileInfo(fullFile).Name;
                 if(fileName.Split(".").Count() > 0){
-                    if(DateTime.TryParse(fileName.Split(".")[0],out DateTime compressionTime))
+
+                    if(DateTime.TryParseExact(fileName.Split(".")[0],"yyyy_MM_dd HH:mm:ss", 
+                    CultureInfo.InvariantCulture, DateTimeStyles.None,out DateTime compressionTime))
                     {
                         if(compressionTime < DateTime.Now.AddDays(-maxRetainmentPeriodDays)){
                             // Delete the file.
