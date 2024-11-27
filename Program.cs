@@ -380,6 +380,24 @@ namespace xiao_nrf52840_Environment_Host_App
         static void RotateDataFiles(string airTempDataPath, string airPressureDataPath, string airHumidityDataPath, string enclosureAirTempDataPath, 
                 string cameraDataPath, string audioDataPath, double maxFileSize, int retainmentPeriodDays)
         {
+            if(!File.Exists(audioDataPath)){
+                Directory.CreateDirectory(audioDataPath);
+            }
+            if(!File.Exists(cameraDataPath)){
+                Directory.CreateDirectory(cameraDataPath);
+            }
+            if(!File.Exists(airTempDataPath)){
+                Directory.CreateDirectory(airTempDataPath);
+            }
+            if(!File.Exists(airPressureDataPath)){
+                Directory.CreateDirectory(airPressureDataPath);
+            }
+            if(!File.Exists(airHumidityDataPath)){
+                Directory.CreateDirectory(airHumidityDataPath);
+            }
+            if(!File.Exists(enclosureAirTempDataPath)){
+                Directory.CreateDirectory(enclosureAirTempDataPath);
+            }
             // Delete old audio.
             DeleteOldDataFiles(audioDataPath, retainmentPeriodDays);
             // Delete old images.
