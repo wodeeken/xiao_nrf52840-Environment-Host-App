@@ -324,7 +324,7 @@ namespace xiao_nrf52840_Environment_Host_App
             byte[] characteristicValue;
             characteristicValue = await tempCharacteristic.ReadValueAsync(new Dictionary<string, object>());
             // Temp is rounded to nearest integer.
-            int temp = characteristicValue[0] << 8 | characteristicValue[1];
+            int temp = characteristicValue[0] << 24 | characteristicValue[1] << 16 | characteristicValue[2] << 8 | characteristicValue[3];
             Console.Write("Enclosure Temperature Reading: ");
             Console.Write(temp);
             Console.WriteLine(" °C");
@@ -358,7 +358,7 @@ namespace xiao_nrf52840_Environment_Host_App
         {
             byte[] characteristicValue;
             characteristicValue = await tempCharacteristic.ReadValueAsync(new Dictionary<string, object>());
-            int temp = characteristicValue[0] << 8 | characteristicValue[1];
+            int temp = characteristicValue[0] << 24 | characteristicValue[1] << 16 | characteristicValue[2] << 8 | characteristicValue[3];
             Console.Write("Temperature Reading: ");
             Console.WriteLine(temp);
             double toFahr = Utilities.ConvertCelsiusToFahrenheit(temp);
